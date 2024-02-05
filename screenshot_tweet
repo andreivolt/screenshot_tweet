@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+
+from playwright.sync_api import sync_playwright
+import sys
+import re
+from pathlib import Path
+
+SCREENSHOT_DIR = Path.home() / 'drive/tweets'
+
+def screenshot_tweet(tweet_input):
+    match = re.search(r"https?://(?:twitter.com|x.com)/.+/status/(\d+)(\?.*)?$", tweet_input)
+    tweet_id = match.group(1) if match else None
+
+    if not tweet_id:
+        if tweet_input.isdigit():
+            tweet_id = tweet_input
+        else:
+            print("Invalid input. Please provide a valid tweet URL or numeric tweet ID.")
+            return
+
+    with sync_playwright() as p:
+        device = p.devices['Desktop Chrome HiDPI']
+        browser = p.webkit.launch()
+        context = browser.new_context(**device)
+
+        page = context.new_page()
+        page.emulate_media(color_scheme='dark')
+        page.goto(f"https://twitter.com/i/web/status/{tweet_id}")
+
+        page.mouse.wheel(0, -100)
+        page.wait_for_timeout(1000)
+        page.mouse.wheel(0, 100)
+        page.wait_for_timeout(1000)
+
+        try:
+            page.wait_for_selector('#layers', timeout=3000)
+        except:
+            pass
+
+        page.evaluate("""() => {
+            document.querySelector('#layers').remove()
+
+            document.querySelector('[aria-label="Home timeline"]').firstChild.remove()
+
+            document.querySelectorAll('[data-testid="caret"]').forEach(el => el.remove())
+
+            const replyNode = document.querySelector('[aria-label="Reply"]');
+            if (replyNode) {
+                let parent = replyNode.parentNode
+                while (parent && parent.getAttribute('role') !== 'group') parent = parent.parentNode
+                if (parent) parent.remove()
+            }
+        }""")
+
+        screenshot_path = SCREENSHOT_DIR / f"{tweet_id}.png"
+        page.locator('[data-testid="tweet"]').screenshot(path=screenshot_path)
+        print(f"screenshot saved to: {screenshot_path}")
+        browser.close()
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python screenshot_tweet.py [tweet URL or tweet ID]")
+    else:
+        tweet_input = sys.argv[1]
+        screenshot_tweet(tweet_input)
