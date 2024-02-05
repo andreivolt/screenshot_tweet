@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 
+import argparse
 from playwright.sync_api import sync_playwright
 import sys
 import re
 from pathlib import Path
 
+parser = argparse.ArgumentParser(description="Take a screenshot of a tweet.")
+parser.add_argument("tweet_url", help="The tweet URL or tweet ID to screenshot.")
+parser.add_argument("-o", "--output", help="Output file path or 'stdout'.", default="")
+
+args = parser.parse_args()
+
 SCREENSHOT_DIR = Path.home() / 'drive/tweets'
 
-def screenshot_tweet(tweet_input):
+def screenshot_tweet(tweet_input, output_path):
     match = re.search(r"https?://(?:twitter.com|x.com)/.+/status/(\d+)(\?.*)?$", tweet_input)
     tweet_id = match.group(1) if match else None
 
@@ -52,14 +59,32 @@ def screenshot_tweet(tweet_input):
             }
         }""")
 
-        screenshot_path = SCREENSHOT_DIR / f"{tweet_id}.png"
-        page.locator('[data-testid="tweet"]').screenshot(path=screenshot_path)
-        print(f"screenshot saved to: {screenshot_path}")
+        screenshot_data = page.locator('[data-testid="tweet"]').screenshot()
+
+        if output_path == "-":
+            sys.stdout.buffer.write(screenshot_data)
+        else:
+            if output_path:
+                output_path_obj = Path(output_path)
+                if output_path_obj.is_dir():
+                    filename = f"{tweet_id}.png"
+                    screenshot_path = output_path_obj / filename
+                else:
+                    screenshot_path = output_path_obj
+            else:
+                filename = f"{tweet_id}.png"
+                screenshot_path = SCREENSHOT_DIR / filename
+
+            screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(screenshot_path, 'wb') as f:
+                f.write(screenshot_data)
+            print(f"screenshot saved to: {screenshot_path}")
+
         browser.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python screenshot_tweet.py [tweet URL or tweet ID]")
+    if args.output == "-":
+        screenshot_tweet(args.tweet_url, "-")
     else:
-        tweet_input = sys.argv[1]
-        screenshot_tweet(tweet_input)
+        screenshot_path = args.output if args.output else SCREENSHOT_DIR / f"{args.tweet_url.split('/')[-1]}.png"
+        screenshot_tweet(args.tweet_url, str(screenshot_path))
